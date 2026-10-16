@@ -3,6 +3,7 @@ import unittest
 import copy
 
 from campusflow.workflow import (
+    add_note,
     assign_ticket,
     reopen_ticket,
     update_ticket_status,
@@ -66,6 +67,7 @@ class TestAssignTicket(unittest.TestCase):
                 "priority": "critical",
                 "status": "open",
                 "assigned_to": None,
+                "notes": [],
             }
         ]
 
@@ -106,6 +108,7 @@ class TestTicketWorkflow(unittest.TestCase):
                 "priority": "critical",
                 "status": "open",
                 "assigned_to": None,
+                "notes": [],
             }
         ]
 
@@ -174,6 +177,151 @@ class TestTicketWorkflow(unittest.TestCase):
             update_ticket_status(self.tickets, "T999", "in_progress")
 
 
+class TestAddNote(unittest.TestCase):
+
+    def setUp(self):
+        self.tickets = [{
+            "id": "T001",
+            "title": "Network connection is down",
+            "category": "Network",
+            "urgency": "high",
+            "affected_users": 12,
+            "priority": "critical",
+            "status": "open",
+            "assigned_to": None,
+            "notes": [],
+        }]
+
+    def test_add_note_creates_note_with_id(self):
+        note = add_note(
+            self.tickets, "T001", "Ada", "Network is being checked."
+        )
+
+        self.assertEqual(note["note_id"], "N001")
+        self.assertEqual(note["author"], "Ada")
+        self.assertEqual(note["message"], "Network is being checked.")
+        self.assertEqual(len(self.tickets[0]["notes"]), 1)
+
+    def test_add_note_rejects_blank_author(self):
+        with self.assertRaisesRegex(ValueError, "author"):
+            add_note(self.tickets, "T001", "   ", "A valid note.")
+
+        self.assertEqual(self.tickets[0]["notes"], [])
+
+    def test_add_note_rejects_short_message(self):
+        with self.assertRaisesRegex(ValueError, "5"):
+            add_note(self.tickets, "T001", "Ada", "Hey")
+
+        self.assertEqual(self.tickets[0]["notes"], [])
+
+    def test_add_note_rejects_resolved_ticket(self):
+        self.tickets[0]["status"] = "resolved"
+
+        with self.assertRaisesRegex(ValueError, "resolved"):
+            add_note(
+                self.tickets,
+                "T001",
+                "Ada",
+                "This note should be rejected.",
+            )
+
+        self.assertEqual(self.tickets[0]["notes"], [])
+
+    def test_rejected_note_does_not_consume_id(self):
+        with self.assertRaises(ValueError):
+            add_note(self.tickets, "T001", " ", "Invalid author.")
+
+        note = add_note(
+            self.tickets, "T001", "Ada", "This note should be accepted."
+        )
+
+        self.assertEqual(note["note_id"], "N001")
+
+    def test_add_note_rejects_long_message(self):
+        with self.assertRaisesRegex(ValueError, "300"):
+            add_note(self.tickets, "T001", "Ada", "x" * 301)
+
+        self.assertEqual(self.tickets[0]["notes"], [])
+
+    def test_add_note_rejects_unknown_ticket(self):
+        with self.assertRaisesRegex(ValueError, "Unknown ticket ID"):
+            add_note(
+                self.tickets,
+                "T999",
+                "Ada",
+                "This ticket does not exist.",
+            )
+
+        self.assertEqual(self.tickets[0]["notes"], [])
+
+    def test_add_note_rejects_malformed_existing_note(self):
+        self.tickets[0]["notes"] = [
+            {"note_id": "N001", "author": "Ada"}
+        ]
+        original_notes = [
+            note.copy() for note in self.tickets[0]["notes"]
+        ]
+
+        with self.assertRaisesRegex(ValueError, "message"):
+            add_note(
+                self.tickets,
+                "T001",
+                "Ada",
+                "This new note should be rejected.",
+            )
+
+        self.assertEqual(self.tickets[0]["notes"], original_notes)
+
+    def test_add_note_rejects_duplicate_numeric_note_ids(self):
+        self.tickets[0]["notes"] = [
+            {
+                "note_id": "N001",
+                "author": "Ada",
+                "message": "First existing note.",
+            },
+            {
+                "note_id": "N1",
+                "author": "Joy",
+                "message": "Second existing note.",
+            },
+        ]
+        original_notes = [
+            note.copy() for note in self.tickets[0]["notes"]
+        ]
+
+        with self.assertRaisesRegex(ValueError, "unique"):
+            add_note(
+                self.tickets,
+                "T001",
+                "Ada",
+                "This new note should be rejected.",
+            )
+
+        self.assertEqual(self.tickets[0]["notes"], original_notes)
+
+    def test_add_note_after_reopening_resolved_ticket(self):
+        self.tickets[0]["status"] = "resolved"
+
+        with self.assertRaisesRegex(ValueError, "resolved"):
+            add_note(
+                self.tickets,
+                "T001",
+                "Ada",
+                "This ticket is still resolved.",
+            )
+
+        reopen_ticket(self.tickets, "T001")
+
+        note = add_note(
+            self.tickets,
+            "T001",
+            "Ada",
+            "The ticket has been reopened.",
+        )
+
+        self.assertEqual(note["note_id"], "N001")
+        self.assertEqual(self.tickets[0]["status"], "open")
+
+
 if __name__ == "__main__":
     unittest.main()
-

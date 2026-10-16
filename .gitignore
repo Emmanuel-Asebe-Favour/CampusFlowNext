@@ -2,6 +2,18 @@
 __pycache__/
 *.py[cod]
 
+# Virtual environments
+.venv/
+venv/
+
+# Test and coverage artifacts
+.coverage
+htmlcov/
+
+# Editor and operating system files
+.vscode/
+.DS_Store
+Thumbs.db
+
 # Local runtime and test data
-data/
 data/
